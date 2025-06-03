@@ -1,5 +1,6 @@
-/// A Calculator.
-class Calculator {
-  /// Returns [value] plus 1.
-  int addOne(int value) => value + 1;
-}
+library audio_record_stt;
+
+export 'src/audio_stt_manager.dart';
+export 'src/models/audio_result.dart';
+export 'package:record/record.dart' show Amplitude;
+export 'package:speech_to_text/speech_to_text.dart' show LocaleName;
