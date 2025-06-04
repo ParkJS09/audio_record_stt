@@ -1,7 +1,9 @@
 name: audio_record_stt
-description: "A new Flutter package project."
-version: 0.0.1
-homepage:
+description: Flutter package for audio recording and speech-to-text conversion with easy-to-use wrapper classes.
+version: 0.1.0
+homepage: https://github.com/ParkJS09/audio_record_stt
+repository: https://github.com/ParkJS09/audio_record_stt
+issue_tracker: https://github.com/ParkJS09/audio_record_stt/issues
 
 environment:
   sdk: ^3.8.0
