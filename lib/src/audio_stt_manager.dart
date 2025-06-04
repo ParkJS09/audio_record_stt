@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'audio_recorder.dart';
@@ -19,6 +20,11 @@ class AudioSTTManager {
       return sttResult;
     }
     return AudioResult.success();
+  }
+
+  // 권한 체크
+  Future<bool> checkPermissions() async {
+    return await _sttService.hasPermission();
   }
 
   // 1. 단순 녹음만
@@ -198,10 +204,15 @@ class AudioSTTManager {
     required String fileName,
     bool useDocumentsDirectory = true,
   }) async {
-    return await _audioRecorder.createCustomPath(
-      fileName: fileName,
-      useDocumentsDirectory: useDocumentsDirectory,
-    );
+    try {
+      final directory = useDocumentsDirectory
+          ? await getApplicationDocumentsDirectory()
+          : await getTemporaryDirectory();
+      return '${directory.path}/$fileName';
+    } catch (e) {
+      final tempDir = await getTemporaryDirectory();
+      return '${tempDir.path}/$fileName';
+    }
   }
 
   Future<List<LocaleName>> getAvailableLocales() async {
@@ -220,8 +231,11 @@ class AudioSTTManager {
   // 상태 확인
   bool get isRecording => _isRecording;
   bool get isSTTActive => _isSTTActive;
-  bool get isAvailable => _sttService.isAvailable;
-  String get currentText => _sttService.currentText;
+  bool get isRecorderAvailable => _audioRecorder != null;
+  bool get isSTTAvailable => _sttService.isAvailable;
+
+  // 현재 STT 텍스트
+  String get currentSTTText => _sttService.currentText;
 
   Future<bool> isRecordingPaused() async {
     return await _audioRecorder.isPaused();
@@ -231,5 +245,7 @@ class AudioSTTManager {
   void dispose() {
     _audioRecorder.dispose();
     _sttService.dispose();
+    _isRecording = false;
+    _isSTTActive = false;
   }
 }
