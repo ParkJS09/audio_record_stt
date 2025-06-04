@@ -67,7 +67,7 @@ class STTService {
         //TODO 해당 Deprecated 옵션 제거 후 수정 필요
         cancelOnError: true,
         partialResults: true,
-        localeId: localedId,
+        localeId: localeId,
       );
 
       return AudioResult.success();
