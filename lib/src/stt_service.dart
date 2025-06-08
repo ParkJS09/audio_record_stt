@@ -11,6 +11,13 @@ class STTService {
   StreamController<String>? _textController;
   String _currentText = '';
 
+  // 자동 재시작 관련 변수들
+  bool _shouldKeepListening = false;
+  Timer? _restartTimer;
+  Function(String)? _onPartialResult;
+  Function(String)? _onFinalResult;
+  String _currentLocaleId = 'ko_KR';
+
   Future<bool> _checkPermission() async {
     final micPermission = await Permission.microphone.status;
 
@@ -46,7 +53,53 @@ class STTService {
     }
   }
 
+  // 일반 STT 시작 (기존 방식)
   Future<AudioResult> startListening({
+    required Function(String) onPartialResult,
+    required Function(String) onFinalResult,
+    String localeId = 'ko_KR',
+  }) async {
+    _shouldKeepListening = false; // 자동 재시작 비활성화
+    return await _startSingleSession(
+      onPartialResult: onPartialResult,
+      onFinalResult: onFinalResult,
+      localeId: localeId,
+    );
+  }
+
+  // 연속 STT 시작 (자동 재시작)
+  Future<AudioResult> startContinuousListening({
+    required Function(String) onPartialResult,
+    required Function(String) onFinalResult,
+    String localeId = 'ko_KR',
+  }) async {
+    print('🔄 연속 STT 시작');
+
+    // 콜백 함수들 저장
+    _onPartialResult = onPartialResult;
+    _onFinalResult = onFinalResult;
+    _currentLocaleId = localeId;
+    _shouldKeepListening = true;
+
+    return await _startSingleSession(
+      onPartialResult: onPartialResult,
+      onFinalResult: (text) {
+        // 최종 결과 전달
+        onFinalResult(text);
+
+        print('🔄 Final result received: $text');
+
+        // 자동 재시작 스케줄링
+        if (_shouldKeepListening && !_isListening) {
+          _scheduleRestart();
+        }
+      },
+      localeId: localeId,
+    );
+  }
+
+  // 단일 STT 세션 시작
+  Future<AudioResult> _startSingleSession({
     required Function(String) onPartialResult,
     required Function(String) onFinalResult,
     String localeId = 'ko_KR',
@@ -63,6 +116,7 @@ class STTService {
       // 이미 듣고 있으면 중지
       if (_isListening) {
         await _speechToText.stop();
+        await Future.delayed(const Duration(milliseconds: 100));
       }
 
       // 사용 가능 여부 재확인
@@ -87,12 +141,12 @@ class STTService {
             onPartialResult(_currentText);
           }
         },
-        listenFor: const Duration(seconds: 30), // 30초로 제한
-        pauseFor: const Duration(seconds: 3), // 3초 침묵시 일시정지
-        cancelOnError: true,
+        listenFor: const Duration(minutes: 2), // 짧게 설정 (자동 재시작용)
+        pauseFor: const Duration(seconds: 3), // 짧은 중단 감지
+        cancelOnError: false,
         partialResults: true,
         localeId: localeId,
-        listenMode: ListenMode.confirmation, // 확인 모드 사용
+        listenMode: ListenMode.dictation,
       );
 
       if (!success) {
@@ -107,9 +161,50 @@ class STTService {
     }
   }
 
-  // STT 정지
+  // 자동 재시작 스케줄링
+  void _scheduleRestart() {
+    _restartTimer?.cancel();
+
+    print('🔄 자동 재시작 스케줄링...');
+
+    _restartTimer = Timer(const Duration(milliseconds: 500), () async {
+      if (_shouldKeepListening && !_isListening) {
+        print('🔄 자동 재시작 실행');
+
+        final result = await _startSingleSession(
+          onPartialResult: _onPartialResult!,
+          onFinalResult: (text) {
+            _onFinalResult!(text);
+
+            // 다시 자동 재시작 스케줄링
+            if (_shouldKeepListening && !_isListening) {
+              _scheduleRestart();
+            }
+          },
+          localeId: _currentLocaleId,
+        );
+
+        if (!result.success) {
+          print('🔴 자동 재시작 실패: ${result.error}');
+          // 재시작 실패 시 재시도
+          if (_shouldKeepListening) {
+            _scheduleRestart();
+          }
+        }
+      }
+    });
+  }
+
+  // STT 정지 (연속 모드도 완전 중지)
   Future<AudioResult> stopListening() async {
     try {
+      print('🛑 STT 정지 (연속 모드 포함)');
+
+      // 자동 재시작 중지
+      _shouldKeepListening = false;
+      _restartTimer?.cancel();
+      _restartTimer = null;
+
       if (_isListening) {
         await _speechToText.stop();
         _isListening = false;
@@ -119,15 +214,26 @@ class STTService {
       _textController?.close();
       _textController = null;
 
+      // 콜백 초기화
+      _onPartialResult = null;
+      _onFinalResult = null;
+
       return AudioResult.success(transcription: finalText);
     } catch (e) {
       return AudioResult.error('STT 정지 실패: $e');
     }
   }
 
-  // STT 취소
+  // STT 취소 (연속 모드도 완전 취소)
   Future<AudioResult> cancelListening() async {
     try {
+      print('❌ STT 취소 (연속 모드 포함)');
+
+      // 자동 재시작 중지
+      _shouldKeepListening = false;
+      _restartTimer?.cancel();
+      _restartTimer = null;
+
       if (_isListening) {
         await _speechToText.cancel();
         _isListening = false;
@@ -136,6 +242,10 @@ class STTService {
       _textController?.close();
       _textController = null;
       _currentText = '';
+
+      // 콜백 초기화
+      _onPartialResult = null;
+      _onFinalResult = null;
 
       return AudioResult.success();
     } catch (e) {
@@ -166,6 +276,12 @@ class STTService {
     print('🔴 STT Error: $error');
     _textController?.addError(error);
     _isListening = false;
+
+    // 연속 모드에서 에러 발생 시 재시작 시도
+    if (_shouldKeepListening) {
+      print('🔄 에러 후 자동 재시작 시도');
+      _scheduleRestart();
+    }
   }
 
   // 상태 처리
@@ -173,6 +289,12 @@ class STTService {
     print('🔵 STT Status: $status');
     if (status == 'done' || status == 'notListening') {
       _isListening = false;
+
+      // 연속 모드에서 done 상태 시 재시작 스케줄링
+      if (_shouldKeepListening && status == 'done') {
+        print('🔄 Done 상태에서 자동 재시작 스케줄링');
+        _scheduleRestart();
+      }
     }
   }
 
@@ -184,9 +306,14 @@ class STTService {
 
   // 리소스 해제
   void dispose() {
+    _shouldKeepListening = false;
+    _restartTimer?.cancel();
+    _restartTimer = null;
     _speechToText.stop();
     _textController?.close();
     _isListening = false;
     _isInitialized = false;
+    _onPartialResult = null;
+    _onFinalResult = null;
   }
 }

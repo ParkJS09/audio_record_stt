@@ -2,26 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:audio_record_stt/audio_record_stt.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Audio Record STT Demo',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: AudioSTTDemo(),
+      title: 'Audio Record STT Test',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+      ),
+      home: const AudioSTTTestPage(),
     );
   }
 }
 
-class AudioSTTDemo extends StatefulWidget {
+class AudioSTTTestPage extends StatefulWidget {
+  const AudioSTTTestPage({super.key});
+
   @override
-  _AudioSTTDemoState createState() => _AudioSTTDemoState();
+  State<AudioSTTTestPage> createState() => _AudioSTTTestPageState();
 }
 
-class _AudioSTTDemoState extends State<AudioSTTDemo> {
+class _AudioSTTTestPageState extends State<AudioSTTTestPage> {
   final AudioSTTManager _manager = AudioSTTManager();
   String _partialText = '';
   String _finalText = '';
@@ -88,6 +95,40 @@ class _AudioSTTDemoState extends State<AudioSTTDemo> {
     });
   }
 
+  // 연속 STT 시작 (자동 재시작)
+  Future<void> _startContinuousSTT() async {
+    if (!_isInitialized) {
+      await _initializeSTT();
+      return;
+    }
+
+    setState(() {
+      _statusText = '연속 STT 시작 중...';
+      _partialText = '';
+      _finalText = '';
+    });
+
+    final result = await _manager.startContinuousSTT(
+      onPartialResult: (text) {
+        setState(() {
+          _partialText = text;
+          _statusText = '듣는 중... (연속 모드)';
+        });
+      },
+      onFinalResult: (text) {
+        setState(() {
+          _finalText = _finalText.isEmpty ? text : '$_finalText $text';
+          _statusText = '듣는 중... (연속 모드)';
+        });
+      },
+      localeId: 'ko_KR',
+    );
+
+    if (!result.success) {
+      setState(() => _statusText = '연속 STT 시작 실패: ${result.error}');
+    }
+  }
+
   Future<void> _startRecordingWithSTT() async {
     if (!_isInitialized) {
       await _initializeSTT();
@@ -102,12 +143,13 @@ class _AudioSTTDemoState extends State<AudioSTTDemo> {
 
     final result = await _manager.startRecordingWithSTT(
       onPartialResult: (text) {
+        print('partialText: $text');
         setState(() {
           _partialText = text;
-          _statusText = '녹음 중... (실시간 인식)';
         });
       },
       onFinalResult: (text) {
+        print('finalText: $text');
         setState(() {
           _finalText = text;
         });
@@ -144,7 +186,10 @@ class _AudioSTTDemoState extends State<AudioSTTDemo> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Audio Record STT Demo')),
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('Audio Record STT 테스트'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -152,42 +197,73 @@ class _AudioSTTDemoState extends State<AudioSTTDemo> {
             // 상태 표시
             Container(
               width: double.infinity,
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: _manager.isSTTActive
                     ? Colors.green[100]
                     : Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
               ),
-              child: Text(
-                '상태: $_statusText',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              child: Row(
+                children: [
+                  Icon(
+                    _manager.isSTTActive ? Icons.mic : Icons.mic_off,
+                    color: _manager.isSTTActive ? Colors.green : Colors.grey,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '상태: $_statusText',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
             // 실시간 텍스트
             Container(
               width: double.infinity,
-              height: 100,
-              padding: EdgeInsets.all(16),
+              height: 120,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.blue),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.blue[50],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '실시간 인식:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      Icon(Icons.hearing, color: Colors.blue[700]),
+                      const SizedBox(width: 8),
+                      Text(
+                        '실시간 인식:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue[700],
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Expanded(
                     child: SingleChildScrollView(
                       child: Text(
                         _partialText.isEmpty ? '음성을 인식 중...' : _partialText,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: _partialText.isEmpty
+                              ? Colors.grey[600]
+                              : Colors.black87,
+                        ),
                       ),
                     ),
                   ),
@@ -195,28 +271,47 @@ class _AudioSTTDemoState extends State<AudioSTTDemo> {
               ),
             ),
 
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
             // 최종 텍스트
             Container(
               width: double.infinity,
-              height: 100,
-              padding: EdgeInsets.all(16),
+              height: 120,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.green),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.green[50],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('최종 결과:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green[700]),
+                      const SizedBox(width: 8),
+                      Text(
+                        '최종 결과:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Expanded(
                     child: SingleChildScrollView(
                       child: Text(
                         _finalText.isEmpty
-                            ? '완료된 인식 결과가 여기에 표시됩니다.'
+                            ? '완료된 인식 결과가 여기에 누적됩니다. (연속 모드에서는 문장별로 누적)'
                             : _finalText,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: _finalText.isEmpty
+                              ? Colors.grey[600]
+                              : Colors.black87,
+                        ),
                       ),
                     ),
                   ),
@@ -224,55 +319,100 @@ class _AudioSTTDemoState extends State<AudioSTTDemo> {
               ),
             ),
 
-            SizedBox(height: 30),
+            const SizedBox(height: 30),
 
-            // 버튼들
+            // 컨트롤 버튼들
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                ElevatedButton(
+                // 연속 STT (권장)
+                ElevatedButton.icon(
                   onPressed: _isInitialized && !_manager.isSTTActive
-                      ? _startSTT
+                      ? _startContinuousSTT
                       : null,
-                  child: Text('STT만 시작'),
+                  icon: const Icon(Icons.autorenew),
+                  label: const Text('연속 STT'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
                 ),
-                ElevatedButton(
-                  onPressed: _manager.isSTTActive ? _stopSTT : null,
-                  child: Text('STT 중지'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                ),
-                ElevatedButton(
+                // 녹음+연속STT
+                ElevatedButton.icon(
                   onPressed:
                       _isInitialized &&
                           !_manager.isRecording &&
                           !_manager.isSTTActive
                       ? _startRecordingWithSTT
                       : null,
-                  child: Text('녹음+STT 시작'),
+                  icon: const Icon(Icons.fiber_smart_record),
+                  label: const Text('녹음+연속STT'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                 ),
-                ElevatedButton(
+                // 중지
+                ElevatedButton.icon(
                   onPressed: _manager.isRecording || _manager.isSTTActive
                       ? _stopRecordingWithSTT
                       : null,
-                  child: Text('녹음+STT 중지'),
+                  icon: const Icon(Icons.stop_circle),
+                  label: const Text('중지'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                 ),
               ],
             ),
 
-            SizedBox(height: 20),
+            const Spacer(),
 
-            // 정보
-            Text(
-              '💡 팁: "안녕하세요", "테스트", "음성인식" 등을 말해보세요!',
-              style: TextStyle(color: Colors.grey[600]),
-              textAlign: TextAlign.center,
+            // 사용법 안내
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.amber[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber[200]!),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.tips_and_updates, color: Colors.amber[700]),
+                      const SizedBox(width: 8),
+                      Text(
+                        '테스트 팁',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '🔄 "연속 STT": 침묵 감지로 자동 중단되지 않는 연속 음성 인식!\n📝 "안녕하세요", "음성 인식 테스트", "플러터 개발" 등을 말해보세요!',
+                    style: TextStyle(fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ],
         ),

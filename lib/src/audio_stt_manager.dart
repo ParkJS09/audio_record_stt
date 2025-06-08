@@ -96,6 +96,30 @@ class AudioSTTManager {
     return result;
   }
 
+  // 연속 STT 시작 (자동 재시작)
+  Future<AudioResult> startContinuousSTT({
+    required Function(String) onPartialResult,
+    required Function(String) onFinalResult,
+    String localeId = 'ko_KR',
+  }) async {
+    if (_isSTTActive) {
+      return AudioResult.error('이미 STT가 활성화되어 있습니다');
+    }
+
+    print('🔄 연속 STT 모드 시작');
+
+    final result = await _sttService.startContinuousListening(
+      onPartialResult: onPartialResult,
+      onFinalResult: onFinalResult,
+      localeId: localeId,
+    );
+
+    if (result.success) {
+      _isSTTActive = true;
+    }
+    return result;
+  }
+
   Future<AudioResult> stopSTT() async {
     if (!_isSTTActive) {
       return AudioResult.error('STT가 활성화되어 있지 않습니다');
@@ -122,6 +146,7 @@ class AudioSTTManager {
     required Function(String) onPartialResult,
     required Function(String) onFinalResult,
     String localeId = 'ko_KR',
+    bool continuousMode = true, // 기본적으로 연속 모드 사용
   }) async {
     // 녹음 시작
     final recordResult = await startRecording(path: path);
@@ -129,12 +154,18 @@ class AudioSTTManager {
       return recordResult;
     }
 
-    // STT 시작
-    final sttResult = await startSTT(
-      onPartialResult: onPartialResult,
-      onFinalResult: onFinalResult,
-      localeId: localeId,
-    );
+    // STT 시작 (연속 모드 or 일반 모드)
+    final sttResult = continuousMode
+        ? await startContinuousSTT(
+            onPartialResult: onPartialResult,
+            onFinalResult: onFinalResult,
+            localeId: localeId,
+          )
+        : await startSTT(
+            onPartialResult: onPartialResult,
+            onFinalResult: onFinalResult,
+            localeId: localeId,
+          );
 
     if (!sttResult.success) {
       // STT 실패하면 녹음도 정지
